@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns:kafka="http://www.mulesoft.org/schema/mule/kafka" xmlns:servicenow="http://www.mulesoft.org/schema/mule/servicenow" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/servicenow http://www.mulesoft.org/schema/mule/servicenow/current/mule-servicenow.xsd
+http://www.mulesoft.org/schema/mule/kafka http://www.mulesoft.org/schema/mule/kafka/current/mule-kafka.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+    <http:listener-config name="servicenowapi-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+    <apikit:config name="servicenowapi-config" api="resource::cfee7195-84f6-4630-ad16-ba27d958f887:servicenowapi:1.0.0:raml:zip:servicenowapi.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <servicenow:config name="ServiceNow_Config" doc:name="ServiceNow Config" doc:id="b4c1edd2-693f-4652-98e3-8c3435856eb4" >
+		<servicenow:basic-connection username="admin" password="D2-!AWmNkiw1" serviceAddress="https://dev197882.service-now.com/" serviceNowVersion="NEW_YORK" >
+			<servicenow:transport >
+				<servicenow:basic-auth-http-message-dispatcher-provider username="admin" password="D2-!AWmNkiw1" />
+			</servicenow:transport>
+		</servicenow:basic-connection>
+	</servicenow:config>
+	<kafka:producer-config name="Apache_Kafka_Producer_configuration" doc:name="Apache Kafka Producer configuration" doc:id="76748970-f6c6-4e95-9555-43d97a2b3305" >
+		<kafka:producer-plaintext-connection >
+			<kafka:bootstrap-servers >
+				<kafka:bootstrap-server value="localhost:9092" />
+			</kafka:bootstrap-servers>
+		</kafka:producer-plaintext-connection>
+	</kafka:producer-config>
+	<jms:config name="JMS_Config" doc:name="JMS Config" doc:id="f9e99949-cfd9-4f88-9ebb-4332f993d86c" >
+		<jms:active-mq-connection username="admin" password="admin" >
+			<jms:factory-configuration brokerUrl="tcp://localhost:61616" />
+		</jms:active-mq-connection>
+	</jms:config>
+	<flow name="servicenowapi-main">
+        <http:listener config-ref="servicenowapi-httpListenerConfig" path="/api/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:router config-ref="servicenowapi-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:BAD_REQUEST">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Bad request"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Method not allowed"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not acceptable"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">406</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Unsupported media type"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">415</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_IMPLEMENTED">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not Implemented"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">501</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="servicenowapi-console">
+        <http:listener config-ref="servicenowapi-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="servicenowapi-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\incidents:servicenowapi-config">
+		<ee:transform doc:name="incident-number" doc:id="3f491b42-e243-4af8-8441-3428c75dadea" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="incident-number" ><![CDATA[attributes.queryParams.incidentId]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="f7e01c37-8b10-40e1-bdb9-06fcfb39a01a" message='#["Incident-Number - " ++ vars."incident-number"]'/>
+		<ee:transform doc:name="payload" doc:id="1f3ca1c2-1397-4018-a014-3497d7031076" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://www.service-now.com/incident
+---
+{
+	ns0#getRecords: {
+		number: vars."incident-number"
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="c4929917-05a1-40f5-bfba-22c930c2b145" message="#[payload]"/>
+		<servicenow:invoke doc:name="Invoke" doc:id="caf25bbc-a619-4b71-9a40-f3e3dc8e6e60" config-ref="ServiceNow_Config" service="incident" operation="getRecords"/>
+		<ee:transform doc:name="Transform Message" doc:id="aaa75021-5c0e-4782-a084-f9d41abd9a98" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var inc = payload.body.getRecordsResponse.getRecordsResult
+---
+{
+  "Incident Number" : inc.number,
+  "Short Description" : inc.short_description,
+  "Created By" : inc.sys_created_by,
+  "Created on" : inc.sys_created_on,
+  "Critical" : if(inc.urgency == 1) "1 - very high" else if(inc.urgency == 2) "2 - high" else if(inc.urgency == 3) "3 - moderate" else if(inc.urgency == 4) "4 - low" else "5 - very low",
+  "sys_id" : inc.sys_id
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+    </flow>
+    <flow name="post:\publish:application\json:servicenowapi-config">
+		<ee:transform doc:name="Transform Message" doc:id="c9c7c283-b4dc-4f2f-8b80-82b1930b927b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="2bd50163-f3b6-4a61-b2da-e73dec724345" message='#[output json&#10;---&#10;"payload to Publish - " ++ write(payload)]'/>
+		<choice doc:name="Choice" doc:id="ad307f4d-eaf9-46f3-bb35-0d8484c7d4c1" >
+			<when expression='#[payload.endpoint == "KAFKA"]'>
+				<logger level="INFO" doc:name="Logger" doc:id="f04a1d14-2c62-436b-8e67-07d8595a9e76" message='#["Publishing data to Kafka"]'/>
+				<kafka:publish doc:name="Publish" doc:id="a41ba6b0-877c-4c8e-8f5b-a3602229890b" config-ref="Apache_Kafka_Producer_configuration" topic="vishnu-test-topic"/>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="168e5d9d-c82f-431d-aa9d-a89ea24c26a4" message='#["Publishing data to JMS"]' />
+				<jms:publish doc:name="Publish" doc:id="417e7b70-2a3a-4b9c-975b-e47a785ac2bc" config-ref="JMS_Config" destination="testQueue"/>
+			</otherwise>
+		</choice>
+    </flow>
+</mule>
